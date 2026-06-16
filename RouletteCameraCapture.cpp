@@ -2,22 +2,37 @@
 #include "RouletteCameraCapture.h"
 
 #include <QtMultimedia/QMediaDevices>
-#include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QCameraFormat>
 #include <QtMultimedia/QVideoFrame>
 #include <QtCore/QMutexLocker>
+#include <QtCore/QSignalBlocker>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QStatusBar>
+#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QWidget>
 
 RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     : QMainWindow(parent)
 {
     ui.setupUi(this);
 
-    m_previewLabel = new QLabel(this);
+    QWidget *central = new QWidget(this);
+    QVBoxLayout *layout = new QVBoxLayout(central);
+
+    m_cameraSelector = new QComboBox(central);
+    layout->addWidget(m_cameraSelector);
+
+    m_previewLabel = new QLabel(central);
     m_previewLabel->setAlignment(Qt::AlignCenter);
     m_previewLabel->setText("Initializing camera...");
-    setCentralWidget(m_previewLabel);
+    layout->addWidget(m_previewLabel, 1);
+
+    setCentralWidget(central);
+
+    m_videoSink = new QVideoSink(this);
+    m_captureSession.setVideoSink(m_videoSink);
+    connect(m_videoSink, &QVideoSink::videoFrameChanged, this, &RouletteCameraCapture::onVideoFrameChanged);
+    connect(m_cameraSelector, &QComboBox::currentIndexChanged, this, &RouletteCameraCapture::onCameraSelectionChanged);
 
     m_previewTimer.setInterval(100);
     connect(&m_previewTimer, &QTimer::timeout, this, &RouletteCameraCapture::updatePreview);
@@ -36,14 +51,45 @@ RouletteCameraCapture::~RouletteCameraCapture()
 
 void RouletteCameraCapture::setupCamera()
 {
-    const QList<QCameraDevice> cameras = QMediaDevices::videoInputs();
-    if (cameras.isEmpty())
+    m_cameraDevices = QMediaDevices::videoInputs();
+
+    {
+        QSignalBlocker blocker(m_cameraSelector);
+        m_cameraSelector->clear();
+
+        for (const QCameraDevice &device : m_cameraDevices)
+        {
+            m_cameraSelector->addItem(device.description());
+        }
+    }
+
+    if (m_cameraDevices.isEmpty())
     {
         m_previewLabel->setText("No USB camera found.");
         return;
     }
 
-    m_camera = new QCamera(cameras.first(), this);
+    m_cameraSelector->setCurrentIndex(0);
+    startCamera(m_cameraDevices.first());
+}
+
+void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
+{
+    if (m_camera != nullptr)
+    {
+        m_camera->stop();
+        m_captureSession.setCamera(nullptr);
+        m_camera->deleteLater();
+        m_camera = nullptr;
+    }
+
+    {
+        QMutexLocker locker(&m_frameMutex);
+        m_latestFrame = QImage();
+    }
+    m_previewLabel->setText("Switching camera...");
+
+    m_camera = new QCamera(cameraDevice, this);
 
     const QList<QCameraFormat> formats = m_camera->cameraDevice().videoFormats();
     QCameraFormat bestFormat;
@@ -75,16 +121,22 @@ void RouletteCameraCapture::setupCamera()
         m_camera->setCameraFormat(bestFormat);
     }
 
-    m_videoSink = new QVideoSink(this);
     m_captureSession.setCamera(m_camera);
-    m_captureSession.setVideoSink(m_videoSink);
-
-    connect(m_videoSink, &QVideoSink::videoFrameChanged, this, &RouletteCameraCapture::onVideoFrameChanged);
-
     m_camera->start();
 
-    statusBar()->showMessage(QString("Capture target: 260 fps, actual max format: %1 fps, preview: 10 fps")
+    statusBar()->showMessage(QString("Camera: %1 | Capture target: 260 fps, actual max format: %2 fps, preview: 10 fps")
+        .arg(cameraDevice.description())
         .arg(bestFrameRate, 0, 'f', 1));
+}
+
+void RouletteCameraCapture::onCameraSelectionChanged(int index)
+{
+    if (index < 0 || index >= m_cameraDevices.size())
+    {
+        return;
+    }
+
+    startCamera(m_cameraDevices.at(index));
 }
 
 void RouletteCameraCapture::onVideoFrameChanged(const QVideoFrame &frame)

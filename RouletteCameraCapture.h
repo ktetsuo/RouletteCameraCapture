@@ -2,12 +2,15 @@
 
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QComboBox>
 #include <QtMultimedia/QCamera>
+#include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
 #include <QtGui/QImage>
 #include <QtCore/QMutex>
 #include <QtCore/QTimer>
+#include <QtCore/QList>
 #include "ui_RouletteCameraCapture.h"
 
 class RouletteCameraCapture : public QMainWindow
@@ -20,12 +23,16 @@ public:
 
 private:
     void setupCamera();
+    void startCamera(const QCameraDevice &cameraDevice);
+    void onCameraSelectionChanged(int index);
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();
 
 private:
     Ui::RouletteCameraCaptureClass ui;
+    QComboBox *m_cameraSelector = nullptr;
     QLabel *m_previewLabel = nullptr;
+    QList<QCameraDevice> m_cameraDevices;
     QCamera *m_camera = nullptr;
     QMediaCaptureSession m_captureSession;
     QVideoSink *m_videoSink = nullptr;
