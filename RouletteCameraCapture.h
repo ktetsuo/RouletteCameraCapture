@@ -26,6 +26,8 @@ public:
 private:
     void setupCamera();
     void startCamera(const QCameraDevice &cameraDevice);
+    int findSavedCameraIndex() const;
+    void saveSelectedCamera(const QCameraDevice &cameraDevice);
     void onCameraSelectionChanged(int index);
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();

@@ -5,6 +5,7 @@
 #include <QtMultimedia/QCameraFormat>
 #include <QtMultimedia/QVideoFrame>
 #include <QtCore/QMutexLocker>
+#include <QtCore/QSettings>
 #include <QtCore/QSignalBlocker>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QStatusBar>
@@ -69,8 +70,12 @@ void RouletteCameraCapture::setupCamera()
         return;
     }
 
-    m_cameraSelector->setCurrentIndex(0);
-    startCamera(m_cameraDevices.first());
+    const int selectedIndex = findSavedCameraIndex();
+    {
+        QSignalBlocker blocker(m_cameraSelector);
+        m_cameraSelector->setCurrentIndex(selectedIndex);
+    }
+    startCamera(m_cameraDevices.at(selectedIndex));
 }
 
 void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
@@ -132,6 +137,33 @@ void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
     updateStatusMessage();
 }
 
+int RouletteCameraCapture::findSavedCameraIndex() const
+{
+    QSettings settings("RouletteCameraCapture", "RouletteCameraCapture");
+    const QByteArray savedDeviceId = settings.value("camera/deviceId").toByteArray();
+
+    if (savedDeviceId.isEmpty())
+    {
+        return 0;
+    }
+
+    for (int i = 0; i < m_cameraDevices.size(); ++i)
+    {
+        if (m_cameraDevices.at(i).id() == savedDeviceId)
+        {
+            return i;
+        }
+    }
+
+    return 0;
+}
+
+void RouletteCameraCapture::saveSelectedCamera(const QCameraDevice &cameraDevice)
+{
+    QSettings settings("RouletteCameraCapture", "RouletteCameraCapture");
+    settings.setValue("camera/deviceId", cameraDevice.id());
+}
+
 void RouletteCameraCapture::onCameraSelectionChanged(int index)
 {
     if (index < 0 || index >= m_cameraDevices.size())
@@ -139,7 +171,9 @@ void RouletteCameraCapture::onCameraSelectionChanged(int index)
         return;
     }
 
-    startCamera(m_cameraDevices.at(index));
+    const QCameraDevice cameraDevice = m_cameraDevices.at(index);
+    saveSelectedCamera(cameraDevice);
+    startCamera(cameraDevice);
 }
 
 void RouletteCameraCapture::onVideoFrameChanged(const QVideoFrame &frame)
