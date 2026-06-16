@@ -11,6 +11,8 @@
 #include <QtCore/QMutex>
 #include <QtCore/QTimer>
 #include <QtCore/QList>
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QString>
 #include "ui_RouletteCameraCapture.h"
 
 class RouletteCameraCapture : public QMainWindow
@@ -27,6 +29,7 @@ private:
     void onCameraSelectionChanged(int index);
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();
+    void updateStatusMessage();
 
 private:
     Ui::RouletteCameraCaptureClass ui;
@@ -39,5 +42,10 @@ private:
     QImage m_latestFrame;
     QMutex m_frameMutex;
     QTimer m_previewTimer;
+    QElapsedTimer m_captureFpsTimer;
+    int m_captureFrameCount = 0;
+    qreal m_measuredCaptureFps = 0.0;
+    qreal m_selectedMaxFrameRate = 0.0;
+    QString m_currentCameraName;
 };
 

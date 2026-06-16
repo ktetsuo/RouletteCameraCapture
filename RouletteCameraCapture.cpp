@@ -124,9 +124,12 @@ void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
     m_captureSession.setCamera(m_camera);
     m_camera->start();
 
-    statusBar()->showMessage(QString("Camera: %1 | Capture target: 260 fps, actual max format: %2 fps, preview: 10 fps")
-        .arg(cameraDevice.description())
-        .arg(bestFrameRate, 0, 'f', 1));
+    m_currentCameraName = cameraDevice.description();
+    m_selectedMaxFrameRate = bestFrameRate;
+    m_captureFrameCount = 0;
+    m_measuredCaptureFps = 0.0;
+    m_captureFpsTimer.restart();
+    updateStatusMessage();
 }
 
 void RouletteCameraCapture::onCameraSelectionChanged(int index)
@@ -152,8 +155,27 @@ void RouletteCameraCapture::onVideoFrameChanged(const QVideoFrame &frame)
         return;
     }
 
-    QMutexLocker locker(&m_frameMutex);
-    m_latestFrame = image;
+    bool shouldUpdateStatus = false;
+
+    {
+        QMutexLocker locker(&m_frameMutex);
+        m_latestFrame = image;
+        ++m_captureFrameCount;
+
+        const qint64 elapsedMs = m_captureFpsTimer.elapsed();
+        if (elapsedMs >= 1000)
+        {
+            m_measuredCaptureFps = static_cast<qreal>(m_captureFrameCount) * 1000.0 / static_cast<qreal>(elapsedMs);
+            m_captureFrameCount = 0;
+            m_captureFpsTimer.restart();
+            shouldUpdateStatus = true;
+        }
+    }
+
+    if (shouldUpdateStatus)
+    {
+        updateStatusMessage();
+    }
 }
 
 void RouletteCameraCapture::updatePreview()
@@ -173,5 +195,13 @@ void RouletteCameraCapture::updatePreview()
         m_previewLabel->size(),
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation));
+}
+
+void RouletteCameraCapture::updateStatusMessage()
+{
+    statusBar()->showMessage(QString("Camera: %1 | Capture target: 260 fps, selected max format: %2 fps, measured arrival: %3 fps, preview: 10 fps")
+        .arg(m_currentCameraName)
+        .arg(m_selectedMaxFrameRate, 0, 'f', 1)
+        .arg(m_measuredCaptureFps, 0, 'f', 1));
 }
 
