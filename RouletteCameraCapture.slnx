@@ -2,5 +2,5 @@
   <Configurations>
     <Platform Name="x64" />
   </Configurations>
-  <Project Path="RouletteCameraCapture.vcxproj" />
+  <Project Path="RouletteCameraCapture.vcxproj" Id="5107d5c1-a499-4d2d-89ab-c1820f5475f1" />
 </Solution>
