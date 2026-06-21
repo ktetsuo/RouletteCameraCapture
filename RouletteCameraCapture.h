@@ -6,10 +6,12 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtMultimedia/QCamera>
 #include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
+#include <QtSerialPort/QSerialPort>
 #include <QtGui/QImage>
 #include <QtCore/QMutex>
 #include <QtCore/QTimer>
@@ -45,6 +47,11 @@ private:
     void onPlaybackSpeedChanged(int index);
     void onPlaybackSliderChanged(int value);
     void refreshSerialPorts();
+    void onToggleSerialPort();
+    void onSerialReadyRead();
+    void onSendSerialByButton();
+    void onSendSerialByEnter();
+    void sendSerialLine(bool clearInputAfterSend);
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();
     void updateStatusMessage();
@@ -63,6 +70,9 @@ private:
     QComboBox *m_serialPortSelector = nullptr;
     QComboBox *m_baudRateSelector = nullptr;
     QPushButton *m_refreshSerialPortsButton = nullptr;
+    QPushButton *m_toggleSerialPortButton = nullptr;
+    QLineEdit *m_serialSendEdit = nullptr;
+    QPushButton *m_serialSendButton = nullptr;
     QPushButton *m_startRecordButton = nullptr;
     QPushButton *m_stopRecordButton = nullptr;
     QPushButton *m_saveBufferButton = nullptr;
@@ -78,6 +88,10 @@ private:
     QCamera *m_camera = nullptr;
     QMediaCaptureSession m_captureSession;
     QVideoSink *m_videoSink = nullptr;
+    QSerialPort *m_serialPort = nullptr;
+    QString m_serialRxPending;
+    QQueue<QString> m_serialReceivedLines;
+    int m_maxSerialReceivedLines = 512;
     QImage m_latestFrame;
     QMutex m_frameMutex;
     QTimer m_previewTimer;

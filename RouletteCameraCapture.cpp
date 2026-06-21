@@ -13,6 +13,7 @@
 #include <QtCore/QDebug>
 #include <QtGui/QPixmap>
 #include <QtSerialPort/QSerialPortInfo>
+#include <QtSerialPort/QSerialPort>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QVBoxLayout>
@@ -41,12 +42,23 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_baudRateSelector->addItem("115200", 115200);
     m_baudRateSelector->setCurrentText("115200");
     m_refreshSerialPortsButton = new QPushButton("Refresh Ports", central);
+    m_toggleSerialPortButton = new QPushButton("Open", central);
     serialLayout->addWidget(serialPortLabel);
     serialLayout->addWidget(m_serialPortSelector, 1);
     serialLayout->addWidget(baudRateLabel);
     serialLayout->addWidget(m_baudRateSelector);
     serialLayout->addWidget(m_refreshSerialPortsButton);
+    serialLayout->addWidget(m_toggleSerialPortButton);
     layout->addLayout(serialLayout);
+
+    QHBoxLayout *serialSendLayout = new QHBoxLayout();
+    m_serialSendEdit = new QLineEdit(central);
+    m_serialSendButton = new QPushButton("Send", central);
+    m_serialSendEdit->setEnabled(false);
+    m_serialSendButton->setEnabled(false);
+    serialSendLayout->addWidget(m_serialSendEdit, 1);
+    serialSendLayout->addWidget(m_serialSendButton);
+    layout->addLayout(serialSendLayout);
 
     QHBoxLayout *recordButtonsLayout = new QHBoxLayout();
     m_startRecordButton = new QPushButton("Start Buffer", central);
@@ -89,11 +101,17 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
 
     setCentralWidget(central);
 
+    m_serialPort = new QSerialPort(this);
+
     m_videoSink = new QVideoSink(this);
     m_captureSession.setVideoSink(m_videoSink);
     connect(m_videoSink, &QVideoSink::videoFrameChanged, this, &RouletteCameraCapture::onVideoFrameChanged);
     connect(m_cameraSelector, &QComboBox::currentIndexChanged, this, &RouletteCameraCapture::onCameraSelectionChanged);
     connect(m_refreshSerialPortsButton, &QPushButton::clicked, this, &RouletteCameraCapture::refreshSerialPorts);
+    connect(m_toggleSerialPortButton, &QPushButton::clicked, this, &RouletteCameraCapture::onToggleSerialPort);
+    connect(m_serialSendButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSendSerialByButton);
+    connect(m_serialSendEdit, &QLineEdit::returnPressed, this, &RouletteCameraCapture::onSendSerialByEnter);
+    connect(m_serialPort, &QSerialPort::readyRead, this, &RouletteCameraCapture::onSerialReadyRead);
     connect(m_startRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStartRecording);
     connect(m_stopRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStopRecording);
     connect(m_saveBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSaveBuffer);
@@ -122,12 +140,18 @@ RouletteCameraCapture::~RouletteCameraCapture()
     {
         m_camera->stop();
     }
+
+    if (m_serialPort != nullptr && m_serialPort->isOpen())
+    {
+        m_serialPort->close();
+    }
 }
 
 void RouletteCameraCapture::refreshSerialPorts()
 {
     const QString selectedPortName = (m_serialPortSelector != nullptr) ? m_serialPortSelector->currentData().toString() : QString();
     const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+    const bool isSerialOpen = (m_serialPort != nullptr && m_serialPort->isOpen());
 
     {
         QSignalBlocker blocker(m_serialPortSelector);
@@ -144,6 +168,9 @@ void RouletteCameraCapture::refreshSerialPorts()
             m_serialPortSelector->addItem("No serial ports", QString());
             m_serialPortSelector->setCurrentIndex(0);
             m_serialPortSelector->setEnabled(false);
+            m_toggleSerialPortButton->setEnabled(false);
+            m_serialSendEdit->setEnabled(false);
+            m_serialSendButton->setEnabled(false);
             return;
         }
 
@@ -161,7 +188,140 @@ void RouletteCameraCapture::refreshSerialPorts()
         }
 
         m_serialPortSelector->setCurrentIndex(restoreIndex);
+        m_serialPortSelector->setEnabled(!isSerialOpen);
+        m_toggleSerialPortButton->setEnabled(true);
+        m_toggleSerialPortButton->setText(isSerialOpen ? "Close" : "Open");
+    }
+}
+
+void RouletteCameraCapture::onToggleSerialPort()
+{
+    if (m_serialPort == nullptr)
+    {
+        return;
+    }
+
+    if (m_serialPort->isOpen())
+    {
+        m_serialPort->close();
+        m_serialRxPending.clear();
+        m_serialReceivedLines.clear();
+        m_toggleSerialPortButton->setText("Open");
         m_serialPortSelector->setEnabled(true);
+        m_baudRateSelector->setEnabled(true);
+        m_refreshSerialPortsButton->setEnabled(true);
+        m_serialSendEdit->setEnabled(false);
+        m_serialSendButton->setEnabled(false);
+        statusBar()->showMessage("Serial port closed.");
+        return;
+    }
+
+    const QString portName = m_serialPortSelector->currentData().toString();
+    if (portName.isEmpty())
+    {
+        statusBar()->showMessage("No serial port selected.");
+        return;
+    }
+
+    const int baudRate = m_baudRateSelector->currentData().toInt();
+    m_serialPort->setPortName(portName);
+    m_serialPort->setBaudRate(baudRate);
+    m_serialPort->setDataBits(QSerialPort::Data8);
+    m_serialPort->setParity(QSerialPort::NoParity);
+    m_serialPort->setStopBits(QSerialPort::OneStop);
+    m_serialPort->setFlowControl(QSerialPort::NoFlowControl);
+
+    if (!m_serialPort->open(QIODevice::ReadWrite))
+    {
+        statusBar()->showMessage(QString("Serial open failed: %1").arg(m_serialPort->errorString()));
+        return;
+    }
+
+    m_serialRxPending.clear();
+    m_serialReceivedLines.clear();
+
+    m_toggleSerialPortButton->setText("Close");
+    m_serialPortSelector->setEnabled(false);
+    m_baudRateSelector->setEnabled(false);
+    m_refreshSerialPortsButton->setEnabled(false);
+    m_serialSendEdit->setEnabled(true);
+    m_serialSendButton->setEnabled(true);
+    statusBar()->showMessage(QString("Serial port opened: %1 @ %2").arg(portName).arg(baudRate));
+}
+
+void RouletteCameraCapture::onSerialReadyRead()
+{
+    if (m_serialPort == nullptr)
+    {
+        return;
+    }
+
+    while (m_serialPort->bytesAvailable() > 0)
+    {
+        const QByteArray received = m_serialPort->readAll();
+        if (received.isEmpty())
+        {
+            continue;
+        }
+
+        m_serialRxPending += QString::fromUtf8(received);
+
+        int newLineIndex = m_serialRxPending.indexOf('\n');
+        while (newLineIndex >= 0)
+        {
+            QString line = m_serialRxPending.left(newLineIndex);
+            m_serialRxPending.remove(0, newLineIndex + 1);
+
+            if (line.endsWith('\r'))
+            {
+                line.chop(1);
+            }
+
+            m_serialReceivedLines.enqueue(line);
+            while (m_serialReceivedLines.size() > m_maxSerialReceivedLines)
+            {
+                m_serialReceivedLines.dequeue();
+            }
+
+            qDebug().noquote() << line;
+
+            newLineIndex = m_serialRxPending.indexOf('\n');
+        }
+    }
+}
+
+void RouletteCameraCapture::onSendSerialByButton()
+{
+    sendSerialLine(false);
+}
+
+void RouletteCameraCapture::onSendSerialByEnter()
+{
+    sendSerialLine(true);
+}
+
+void RouletteCameraCapture::sendSerialLine(bool clearInputAfterSend)
+{
+    if (m_serialPort == nullptr || !m_serialPort->isOpen())
+    {
+        statusBar()->showMessage("Serial port is not open.");
+        return;
+    }
+
+    QByteArray data = m_serialSendEdit->text().toUtf8();
+    data.append('\r');
+    data.append('\n');
+
+    const qint64 written = m_serialPort->write(data);
+    if (written < 0)
+    {
+        statusBar()->showMessage(QString("Serial send failed: %1").arg(m_serialPort->errorString()));
+        return;
+    }
+
+    if (clearInputAfterSend)
+    {
+        m_serialSendEdit->clear();
     }
 }
 
