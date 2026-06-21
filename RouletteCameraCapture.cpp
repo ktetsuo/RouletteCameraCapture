@@ -39,6 +39,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     layout->addLayout(recordButtonsLayout);
 
     QHBoxLayout *playbackLayout = new QHBoxLayout();
+    m_seekStartButton = new QPushButton("|<", central);
     m_playBufferButton = new QPushButton("Play", central);
     m_pauseBufferButton = new QPushButton("Pause", central);
     m_stepBackwardButton = new QPushButton("<", central);
@@ -49,6 +50,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_playbackSpeedSelector->addItem("1/4", 4);
     m_playbackSpeedSelector->addItem("1/8", 8);
     m_playbackSpeedSelector->addItem("1/16", 16);
+    playbackLayout->addWidget(m_seekStartButton);
     playbackLayout->addWidget(m_playBufferButton);
     playbackLayout->addWidget(m_pauseBufferButton);
     playbackLayout->addWidget(m_stepBackwardButton);
@@ -74,6 +76,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     connect(m_startRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStartRecording);
     connect(m_stopRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStopRecording);
     connect(m_saveBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSaveBuffer);
+    connect(m_seekStartButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSeekBufferStart);
     connect(m_playBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onPlayBuffer);
     connect(m_pauseBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onPauseBuffer);
     connect(m_stepBackwardButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStepBackward);
@@ -119,6 +122,7 @@ void RouletteCameraCapture::setupCamera()
         m_startRecordButton->setEnabled(false);
         m_stopRecordButton->setEnabled(false);
         m_saveBufferButton->setEnabled(false);
+        m_seekStartButton->setEnabled(false);
         m_playBufferButton->setEnabled(false);
         m_pauseBufferButton->setEnabled(false);
         m_stepBackwardButton->setEnabled(false);
@@ -366,6 +370,27 @@ void RouletteCameraCapture::onSaveBuffer()
         .arg(savedCount)
         .arg(framesToSave.size())
         .arg(sessionDirPath);
+}
+
+void RouletteCameraCapture::onSeekBufferStart()
+{
+    int frameCount = 0;
+    {
+        QMutexLocker locker(&m_frameMutex);
+        frameCount = m_frameBuffer.size();
+    }
+
+    if (frameCount <= 0)
+    {
+        return;
+    }
+
+    m_playbackTimer.stop();
+    m_isPlaybackActive = true;
+    m_isPlaybackPaused = true;
+    m_playbackIndex = 0;
+    showBufferedFrameAt(m_playbackIndex);
+    updateStatusMessage();
 }
 
 void RouletteCameraCapture::onPlayBuffer()
@@ -664,6 +689,7 @@ void RouletteCameraCapture::updateStatusMessage()
     m_startRecordButton->setEnabled(!m_isBuffering && hasCamera);
     m_stopRecordButton->setEnabled(m_isBuffering);
     m_saveBufferButton->setEnabled(canPlayback);
+    m_seekStartButton->setEnabled(canPlayback);
     m_playBufferButton->setEnabled(canPlayback);
     m_pauseBufferButton->setEnabled(m_isPlaybackActive);
     m_stepBackwardButton->setEnabled(canPlayback);

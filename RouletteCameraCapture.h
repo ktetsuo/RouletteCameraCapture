@@ -35,6 +35,7 @@ private:
     void onStartRecording();
     void onStopRecording();
     void onSaveBuffer();
+    void onSeekBufferStart();
     void onPlayBuffer();
     void onPauseBuffer();
     void onStepBackward();
@@ -60,6 +61,7 @@ private:
     QPushButton *m_startRecordButton = nullptr;
     QPushButton *m_stopRecordButton = nullptr;
     QPushButton *m_saveBufferButton = nullptr;
+    QPushButton *m_seekStartButton = nullptr;
     QPushButton *m_playBufferButton = nullptr;
     QPushButton *m_pauseBufferButton = nullptr;
     QPushButton *m_stepBackwardButton = nullptr;
