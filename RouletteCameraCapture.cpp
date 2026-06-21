@@ -82,6 +82,8 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_playbackSpeedSelector->addItem("1/4", 4);
     m_playbackSpeedSelector->addItem("1/8", 8);
     m_playbackSpeedSelector->addItem("1/16", 16);
+    m_playbackSpeedSelector->addItem("1/32", 32);
+    m_playbackSpeedSelector->setCurrentText("1/16");
     playbackLayout->addWidget(m_seekStartButton);
     playbackLayout->addWidget(m_playBufferButton);
     playbackLayout->addWidget(m_pauseBufferButton);
