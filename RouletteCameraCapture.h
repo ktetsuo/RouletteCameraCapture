@@ -29,6 +29,9 @@ public:
     RouletteCameraCapture(QWidget *parent = nullptr);
     ~RouletteCameraCapture();
 
+signals:
+    void serialTriggerChanged(bool active);
+
 private:
     void setupCamera();
     void startCamera(const QCameraDevice &cameraDevice);
@@ -49,6 +52,7 @@ private:
     void refreshSerialPorts();
     void onToggleSerialPort();
     void onSerialReadyRead();
+    void onSerialTriggerChanged(bool active);
     void onSendSerialByButton();
     void onSendSerialByEnter();
     void sendSerialLine(bool clearInputAfterSend);
@@ -92,6 +96,8 @@ private:
     QString m_serialRxPending;
     QQueue<QString> m_serialReceivedLines;
     int m_maxSerialReceivedLines = 512;
+    bool m_hasLastSerialTriggerValue = false;
+    int m_lastSerialTriggerValue = 0;
     QImage m_latestFrame;
     QMutex m_frameMutex;
     QTimer m_previewTimer;

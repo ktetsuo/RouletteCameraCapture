@@ -112,6 +112,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     connect(m_serialSendButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSendSerialByButton);
     connect(m_serialSendEdit, &QLineEdit::returnPressed, this, &RouletteCameraCapture::onSendSerialByEnter);
     connect(m_serialPort, &QSerialPort::readyRead, this, &RouletteCameraCapture::onSerialReadyRead);
+    connect(this, &RouletteCameraCapture::serialTriggerChanged, this, &RouletteCameraCapture::onSerialTriggerChanged);
     connect(m_startRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStartRecording);
     connect(m_stopRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStopRecording);
     connect(m_saveBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSaveBuffer);
@@ -206,6 +207,7 @@ void RouletteCameraCapture::onToggleSerialPort()
         m_serialPort->close();
         m_serialRxPending.clear();
         m_serialReceivedLines.clear();
+        m_hasLastSerialTriggerValue = false;
         m_toggleSerialPortButton->setText("Open");
         m_serialPortSelector->setEnabled(true);
         m_baudRateSelector->setEnabled(true);
@@ -239,6 +241,7 @@ void RouletteCameraCapture::onToggleSerialPort()
 
     m_serialRxPending.clear();
     m_serialReceivedLines.clear();
+    m_hasLastSerialTriggerValue = false;
 
     m_toggleSerialPortButton->setText("Close");
     m_serialPortSelector->setEnabled(false);
@@ -285,8 +288,58 @@ void RouletteCameraCapture::onSerialReadyRead()
 
             qDebug().noquote() << line;
 
+            const QStringList parts = line.split(',');
+            int numericCount = 0;
+            int secondNumericValue = 0;
+            for (const QString &part : parts)
+            {
+                bool ok = false;
+                const int value = part.trimmed().toInt(&ok);
+                if (!ok)
+                {
+                    continue;
+                }
+
+                ++numericCount;
+                if (numericCount == 2)
+                {
+                    secondNumericValue = value;
+                    break;
+                }
+            }
+
+            if (numericCount >= 2)
+            {
+                const bool isNowFour = (secondNumericValue == 4);
+                const bool wasFour = (m_hasLastSerialTriggerValue && m_lastSerialTriggerValue == 4);
+
+                if (isNowFour && !wasFour)
+                {
+                    emit serialTriggerChanged(true);
+                }
+                else if (!isNowFour && wasFour)
+                {
+                    emit serialTriggerChanged(false);
+                }
+
+                m_lastSerialTriggerValue = secondNumericValue;
+                m_hasLastSerialTriggerValue = true;
+            }
+
             newLineIndex = m_serialRxPending.indexOf('\n');
         }
+    }
+}
+
+void RouletteCameraCapture::onSerialTriggerChanged(bool active)
+{
+    if (active)
+    {
+        onStartRecording();
+    }
+    else
+    {
+        onStopRecording();
     }
 }
 
