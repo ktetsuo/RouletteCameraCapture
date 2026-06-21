@@ -56,6 +56,10 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     playbackLayout->addWidget(m_playbackSpeedSelector);
     layout->addLayout(playbackLayout);
 
+    m_playbackPositionSlider = new QSlider(Qt::Horizontal, central);
+    m_playbackPositionSlider->setRange(0, 0);
+    layout->addWidget(m_playbackPositionSlider);
+
     m_previewLabel = new QLabel(central);
     m_previewLabel->setAlignment(Qt::AlignCenter);
     m_previewLabel->setText("Initializing camera...");
@@ -75,6 +79,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     connect(m_stepBackwardButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStepBackward);
     connect(m_stepForwardButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStepForward);
     connect(m_playbackSpeedSelector, &QComboBox::currentIndexChanged, this, &RouletteCameraCapture::onPlaybackSpeedChanged);
+    connect(m_playbackPositionSlider, &QSlider::valueChanged, this, &RouletteCameraCapture::onPlaybackSliderChanged);
 
     m_previewTimer.setInterval(100);
     connect(&m_previewTimer, &QTimer::timeout, this, &RouletteCameraCapture::updatePreview);
@@ -119,6 +124,7 @@ void RouletteCameraCapture::setupCamera()
         m_stepBackwardButton->setEnabled(false);
         m_stepForwardButton->setEnabled(false);
         m_playbackSpeedSelector->setEnabled(false);
+        m_playbackPositionSlider->setEnabled(false);
         return;
     }
 
@@ -193,6 +199,11 @@ void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
         QMutexLocker locker(&m_frameMutex);
         m_frameBuffer.clear();
     }
+    {
+        QSignalBlocker blocker(m_playbackPositionSlider);
+        m_playbackPositionSlider->setRange(0, 0);
+        m_playbackPositionSlider->setValue(0);
+    }
     m_captureFrameCount = 0;
     m_measuredCaptureFps = 0.0;
     m_captureFpsTimer.restart();
@@ -253,6 +264,11 @@ void RouletteCameraCapture::onStartRecording()
     {
         QMutexLocker locker(&m_frameMutex);
         m_frameBuffer.clear();
+    }
+    {
+        QSignalBlocker blocker(m_playbackPositionSlider);
+        m_playbackPositionSlider->setRange(0, 0);
+        m_playbackPositionSlider->setValue(0);
     }
 
     m_isBuffering = true;
@@ -477,6 +493,27 @@ void RouletteCameraCapture::onPlaybackSpeedChanged(int)
     updateStatusMessage();
 }
 
+void RouletteCameraCapture::onPlaybackSliderChanged(int value)
+{
+    int frameCount = 0;
+    {
+        QMutexLocker locker(&m_frameMutex);
+        frameCount = m_frameBuffer.size();
+    }
+
+    if (frameCount <= 0)
+    {
+        return;
+    }
+
+    m_playbackTimer.stop();
+    m_isPlaybackActive = true;
+    m_isPlaybackPaused = true;
+    m_playbackIndex = qBound(0, value, frameCount - 1);
+    showBufferedFrameAt(m_playbackIndex);
+    updateStatusMessage();
+}
+
 void RouletteCameraCapture::showBufferedFrameAt(int index)
 {
     QImage frame;
@@ -495,6 +532,11 @@ void RouletteCameraCapture::showBufferedFrameAt(int index)
     }
 
     m_playbackIndex = index;
+    {
+        QSignalBlocker blocker(m_playbackPositionSlider);
+        m_playbackPositionSlider->setValue(index);
+    }
+
     m_previewLabel->setPixmap(QPixmap::fromImage(frame).scaled(
         m_previewLabel->size(),
         Qt::KeepAspectRatio,
@@ -627,6 +669,16 @@ void RouletteCameraCapture::updateStatusMessage()
     m_stepBackwardButton->setEnabled(canPlayback);
     m_stepForwardButton->setEnabled(canPlayback);
     m_playbackSpeedSelector->setEnabled(canPlayback);
+    m_playbackPositionSlider->setEnabled(canPlayback);
+
+    const int sliderMax = hasBufferedFrames ? (bufferedFrameCount - 1) : 0;
+    const int clampedIndex = qBound(0, m_playbackIndex, sliderMax);
+    m_playbackIndex = clampedIndex;
+    {
+        QSignalBlocker blocker(m_playbackPositionSlider);
+        m_playbackPositionSlider->setRange(0, sliderMax);
+        m_playbackPositionSlider->setValue(clampedIndex);
+    }
 
     const QString speedText = (m_playbackSpeedSelector != nullptr) ? m_playbackSpeedSelector->currentText() : QString("1/1");
     const QString shortMessage = QString("%1 | cap:%2fps | buf:%3f/%4ms | idx:%5 | spd:%6")

@@ -4,6 +4,7 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QSlider>
 #include <QtMultimedia/QCamera>
 #include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaCaptureSession>
@@ -40,6 +41,7 @@ private:
     void onStepForward();
     void onPlaybackTick();
     void onPlaybackSpeedChanged(int index);
+    void onPlaybackSliderChanged(int value);
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();
     void updateStatusMessage();
@@ -63,6 +65,7 @@ private:
     QPushButton *m_stepBackwardButton = nullptr;
     QPushButton *m_stepForwardButton = nullptr;
     QComboBox *m_playbackSpeedSelector = nullptr;
+    QSlider *m_playbackPositionSlider = nullptr;
     QLabel *m_previewLabel = nullptr;
     QList<QCameraDevice> m_cameraDevices;
     QCamera *m_camera = nullptr;
