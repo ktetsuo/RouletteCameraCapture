@@ -5,6 +5,7 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QLabel>
 #include <QtMultimedia/QCamera>
 #include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaCaptureSession>
@@ -43,6 +44,7 @@ private:
     void onPlaybackTick();
     void onPlaybackSpeedChanged(int index);
     void onPlaybackSliderChanged(int value);
+    void refreshSerialPorts();
     void onVideoFrameChanged(const QVideoFrame &frame);
     void updatePreview();
     void updateStatusMessage();
@@ -58,6 +60,9 @@ private:
 
     Ui::RouletteCameraCaptureClass ui;
     QComboBox *m_cameraSelector = nullptr;
+    QComboBox *m_serialPortSelector = nullptr;
+    QComboBox *m_baudRateSelector = nullptr;
+    QPushButton *m_refreshSerialPortsButton = nullptr;
     QPushButton *m_startRecordButton = nullptr;
     QPushButton *m_stopRecordButton = nullptr;
     QPushButton *m_saveBufferButton = nullptr;

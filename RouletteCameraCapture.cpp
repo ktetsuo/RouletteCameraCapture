@@ -12,6 +12,7 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QDebug>
 #include <QtGui/QPixmap>
+#include <QtSerialPort/QSerialPortInfo>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QVBoxLayout>
@@ -27,6 +28,25 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
 
     m_cameraSelector = new QComboBox(central);
     layout->addWidget(m_cameraSelector);
+
+    QHBoxLayout *serialLayout = new QHBoxLayout();
+    QLabel *serialPortLabel = new QLabel("Serial", central);
+    m_serialPortSelector = new QComboBox(central);
+    QLabel *baudRateLabel = new QLabel("Baud", central);
+    m_baudRateSelector = new QComboBox(central);
+    m_baudRateSelector->addItem("9600", 9600);
+    m_baudRateSelector->addItem("19200", 19200);
+    m_baudRateSelector->addItem("38400", 38400);
+    m_baudRateSelector->addItem("57600", 57600);
+    m_baudRateSelector->addItem("115200", 115200);
+    m_baudRateSelector->setCurrentText("115200");
+    m_refreshSerialPortsButton = new QPushButton("Refresh Ports", central);
+    serialLayout->addWidget(serialPortLabel);
+    serialLayout->addWidget(m_serialPortSelector, 1);
+    serialLayout->addWidget(baudRateLabel);
+    serialLayout->addWidget(m_baudRateSelector);
+    serialLayout->addWidget(m_refreshSerialPortsButton);
+    layout->addLayout(serialLayout);
 
     QHBoxLayout *recordButtonsLayout = new QHBoxLayout();
     m_startRecordButton = new QPushButton("Start Buffer", central);
@@ -73,6 +93,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_captureSession.setVideoSink(m_videoSink);
     connect(m_videoSink, &QVideoSink::videoFrameChanged, this, &RouletteCameraCapture::onVideoFrameChanged);
     connect(m_cameraSelector, &QComboBox::currentIndexChanged, this, &RouletteCameraCapture::onCameraSelectionChanged);
+    connect(m_refreshSerialPortsButton, &QPushButton::clicked, this, &RouletteCameraCapture::refreshSerialPorts);
     connect(m_startRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStartRecording);
     connect(m_stopRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStopRecording);
     connect(m_saveBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSaveBuffer);
@@ -91,6 +112,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_playbackTimer.setInterval(playbackIntervalMs());
     connect(&m_playbackTimer, &QTimer::timeout, this, &RouletteCameraCapture::onPlaybackTick);
 
+    refreshSerialPorts();
     setupCamera();
 }
 
@@ -99,6 +121,47 @@ RouletteCameraCapture::~RouletteCameraCapture()
     if (m_camera != nullptr)
     {
         m_camera->stop();
+    }
+}
+
+void RouletteCameraCapture::refreshSerialPorts()
+{
+    const QString selectedPortName = (m_serialPortSelector != nullptr) ? m_serialPortSelector->currentData().toString() : QString();
+    const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+
+    {
+        QSignalBlocker blocker(m_serialPortSelector);
+        m_serialPortSelector->clear();
+
+        for (const QSerialPortInfo &port : ports)
+        {
+            const QString description = port.description().isEmpty() ? QString("No description") : port.description();
+            m_serialPortSelector->addItem(QString("%1 (%2)").arg(port.portName(), description), port.portName());
+        }
+
+        if (m_serialPortSelector->count() == 0)
+        {
+            m_serialPortSelector->addItem("No serial ports", QString());
+            m_serialPortSelector->setCurrentIndex(0);
+            m_serialPortSelector->setEnabled(false);
+            return;
+        }
+
+        int restoreIndex = 0;
+        if (!selectedPortName.isEmpty())
+        {
+            for (int i = 0; i < m_serialPortSelector->count(); ++i)
+            {
+                if (m_serialPortSelector->itemData(i).toString() == selectedPortName)
+                {
+                    restoreIndex = i;
+                    break;
+                }
+            }
+        }
+
+        m_serialPortSelector->setCurrentIndex(restoreIndex);
+        m_serialPortSelector->setEnabled(true);
     }
 }
 
