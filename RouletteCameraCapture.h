@@ -13,13 +13,24 @@
 #include <QtMultimedia/QVideoSink>
 #include <QtSerialPort/QSerialPort>
 #include <QtGui/QImage>
-#include <QtCore/QMutex>
+#include <QtCore/QRecursiveMutex>
 #include <QtCore/QTimer>
 #include <QtCore/QList>
 #include <QtCore/QQueue>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QString>
 #include "ui_RouletteCameraCapture.h"
+
+/// @brief ルーレット制御装置の制御状態
+enum class ControlState
+{
+    IDLE,             // 待機状態 (0)
+    ACCELERATING,     // 加速中 (1)
+    WAITING_TRIGGER1, // トリガーセンサー1待ち (2)
+    WAITING_TRIGGER2, // トリガーセンサー2待ち (3)
+    TARGETING,        // 目標位置に向けて制御中 (4) ← 撮影対象
+    DECELERATING,     // 減速中 (5)
+};
 
 class RouletteCameraCapture : public QMainWindow
 {
@@ -29,8 +40,9 @@ public:
     RouletteCameraCapture(QWidget *parent = nullptr);
     ~RouletteCameraCapture();
 
-signals:
+    signals:
     void serialTriggerChanged(bool active);
+    void bufferFull();
 
 private:
     void setupCamera();
@@ -96,10 +108,9 @@ private:
     QString m_serialRxPending;
     QQueue<QString> m_serialReceivedLines;
     int m_maxSerialReceivedLines = 512;
-    bool m_hasLastSerialTriggerValue = false;
-    int m_lastSerialTriggerValue = 0;
+    int m_lastControlState = -1;
     QImage m_latestFrame;
-    QMutex m_frameMutex;
+    QRecursiveMutex m_frameMutex;
     QTimer m_previewTimer;
     QElapsedTimer m_captureFpsTimer;
     QElapsedTimer m_bufferTimer;
@@ -108,6 +119,7 @@ private:
     qreal m_selectedMaxFrameRate = 0.0;
     QString m_currentCameraName;
     bool m_isBuffering = false;
+    bool m_isBufferFull = false;
     bool m_isPlaybackActive = false;
     bool m_isPlaybackPaused = false;
     int m_playbackIndex = 0;

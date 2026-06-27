@@ -112,7 +112,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     connect(m_refreshSerialPortsButton, &QPushButton::clicked, this, &RouletteCameraCapture::refreshSerialPorts);
     connect(m_toggleSerialPortButton, &QPushButton::clicked, this, &RouletteCameraCapture::onToggleSerialPort);
     connect(m_serialSendButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSendSerialByButton);
-    connect(m_serialSendEdit, &QLineEdit::returnPressed, this, &RouletteCameraCapture::onSendSerialByEnter);
+     connect(m_serialSendEdit, &QLineEdit::returnPressed, this, &RouletteCameraCapture::onSendSerialByEnter);
     connect(m_serialPort, &QSerialPort::readyRead, this, &RouletteCameraCapture::onSerialReadyRead);
     connect(this, &RouletteCameraCapture::serialTriggerChanged, this, &RouletteCameraCapture::onSerialTriggerChanged);
     connect(m_startRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStartRecording);
@@ -209,7 +209,7 @@ void RouletteCameraCapture::onToggleSerialPort()
         m_serialPort->close();
         m_serialRxPending.clear();
         m_serialReceivedLines.clear();
-        m_hasLastSerialTriggerValue = false;
+        m_lastControlState = -1;
         m_toggleSerialPortButton->setText("Open");
         m_serialPortSelector->setEnabled(true);
         m_baudRateSelector->setEnabled(true);
@@ -243,7 +243,7 @@ void RouletteCameraCapture::onToggleSerialPort()
 
     m_serialRxPending.clear();
     m_serialReceivedLines.clear();
-    m_hasLastSerialTriggerValue = false;
+    m_lastControlState = -1;
 
     m_toggleSerialPortButton->setText("Close");
     m_serialPortSelector->setEnabled(false);
@@ -312,20 +312,23 @@ void RouletteCameraCapture::onSerialReadyRead()
 
             if (numericCount >= 2)
             {
-                const bool isNowFour = (secondNumericValue == 4);
-                const bool wasFour = (m_hasLastSerialTriggerValue && m_lastSerialTriggerValue == 4);
+                const bool isNowTargeting = (secondNumericValue == static_cast<int>(ControlState::TARGETING));
+				const bool wasTargeting = (m_lastControlState == static_cast<int>(ControlState::TARGETING));
+                const bool isNowIdle = (secondNumericValue == static_cast<int>(ControlState::IDLE));
+                const bool wasIdle = (m_lastControlState == static_cast<int>(ControlState::IDLE));
 
-                if (isNowFour && !wasFour)
+                // TARGETING 状態への遷移で録画開始
+                if (isNowTargeting && !wasTargeting)
                 {
                     emit serialTriggerChanged(true);
                 }
-                else if (!isNowFour && wasFour)
+                // IDLE 以外から IDLE への遷移で録画停止
+                else if (isNowIdle && !wasIdle)
                 {
                     emit serialTriggerChanged(false);
                 }
 
-                m_lastSerialTriggerValue = secondNumericValue;
-                m_hasLastSerialTriggerValue = true;
+                m_lastControlState = secondNumericValue;
             }
 
             newLineIndex = m_serialRxPending.indexOf('\n');
@@ -554,6 +557,7 @@ void RouletteCameraCapture::onStartRecording()
     }
 
     m_isBuffering = true;
+    m_isBufferFull = false;
     m_bufferTimer.restart();
 
     qDebug().noquote() << QString("BufferStart | Camera=%1 | DurationMs=%2")
@@ -897,9 +901,16 @@ void RouletteCameraCapture::onVideoFrameChanged(const QVideoFrame &frame)
             const qint64 nowMs = m_bufferTimer.elapsed();
             m_frameBuffer.enqueue({ nowMs, image });
 
+            // バッファから 1秒より古いフレームを削除
             while (!m_frameBuffer.isEmpty() && (nowMs - m_frameBuffer.head().timestampMs) > m_bufferDurationMs)
             {
                 m_frameBuffer.dequeue();
+            }
+
+            // 開始から1秒経ったら停止
+            if (nowMs >= m_bufferDurationMs)
+            {
+                onStopRecording();
             }
         }
 
