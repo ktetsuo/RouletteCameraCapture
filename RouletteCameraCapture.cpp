@@ -149,7 +149,12 @@ RouletteCameraCapture::~RouletteCameraCapture()
 
 void RouletteCameraCapture::refreshSerialPorts()
 {
-    const QString selectedPortName = (m_serialPortSelector != nullptr) ? m_serialPortSelector->currentData().toString() : QString();
+    // 現在選択されているポート、またはQSettingsから保存されたポート名を取得
+    QString selectedPortName = (m_serialPortSelector != nullptr) ? m_serialPortSelector->currentData().toString() : QString();
+    if (selectedPortName.isEmpty())
+    {
+        selectedPortName = findSavedSerialPort();
+    }
     const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
     const bool isSerialOpen = (m_serialPort != nullptr && m_serialPort->isOpen());
 
@@ -237,6 +242,9 @@ void RouletteCameraCapture::onToggleSerialPort()
         statusBar()->showMessage(QString("Serial open failed: %1").arg(m_serialPort->errorString()));
         return;
     }
+
+    // ポート名を保存
+    saveSelectedSerialPort(portName);
 
     m_serialRxPending.clear();
     m_serialReceivedLines.clear();
@@ -516,6 +524,18 @@ void RouletteCameraCapture::saveSelectedCamera(const QCameraDevice &cameraDevice
 {
     QSettings settings("RouletteCameraCapture", "RouletteCameraCapture");
     settings.setValue("camera/deviceId", cameraDevice.id());
+}
+
+QString RouletteCameraCapture::findSavedSerialPort() const
+{
+    QSettings settings("RouletteCameraCapture", "RouletteCameraCapture");
+    return settings.value("serial/portName", "").toString();
+}
+
+void RouletteCameraCapture::saveSelectedSerialPort(const QString &portName)
+{
+    QSettings settings("RouletteCameraCapture", "RouletteCameraCapture");
+    settings.setValue("serial/portName", portName);
 }
 
 void RouletteCameraCapture::onCameraSelectionChanged(int index)

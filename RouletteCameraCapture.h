@@ -49,6 +49,8 @@ private:
     void startCamera(const QCameraDevice &cameraDevice);
     int findSavedCameraIndex() const;
     void saveSelectedCamera(const QCameraDevice &cameraDevice);
+    QString findSavedSerialPort() const;
+    void saveSelectedSerialPort(const QString &portName);
     void onCameraSelectionChanged(int index);
     void onStartRecording();
     void onStopRecording();
