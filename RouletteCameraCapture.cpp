@@ -72,8 +72,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
 
     QHBoxLayout *playbackLayout = new QHBoxLayout();
     m_seekStartButton = new QPushButton("|<", central);
-    m_playBufferButton = new QPushButton("Play", central);
-    m_pauseBufferButton = new QPushButton("Pause", central);
+    m_playPauseBufferButton = new QPushButton("Play", central);
     m_stepBackwardButton = new QPushButton("<", central);
     m_stepForwardButton = new QPushButton(">", central);
     m_playbackSpeedSelector = new QComboBox(central);
@@ -85,8 +84,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_playbackSpeedSelector->addItem("1/32", 32);
     m_playbackSpeedSelector->setCurrentText("1/16");
     playbackLayout->addWidget(m_seekStartButton);
-    playbackLayout->addWidget(m_playBufferButton);
-    playbackLayout->addWidget(m_pauseBufferButton);
+    playbackLayout->addWidget(m_playPauseBufferButton);
     playbackLayout->addWidget(m_stepBackwardButton);
     playbackLayout->addWidget(m_stepForwardButton);
     playbackLayout->addWidget(m_playbackSpeedSelector);
@@ -119,8 +117,7 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     connect(m_stopRecordButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStopRecording);
     connect(m_saveBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSaveBuffer);
     connect(m_seekStartButton, &QPushButton::clicked, this, &RouletteCameraCapture::onSeekBufferStart);
-    connect(m_playBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onPlayBuffer);
-    connect(m_pauseBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onPauseBuffer);
+    connect(m_playPauseBufferButton, &QPushButton::clicked, this, &RouletteCameraCapture::onPlayPauseBuffer);
     connect(m_stepBackwardButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStepBackward);
     connect(m_stepForwardButton, &QPushButton::clicked, this, &RouletteCameraCapture::onStepForward);
     connect(m_playbackSpeedSelector, &QComboBox::currentIndexChanged, this, &RouletteCameraCapture::onPlaybackSpeedChanged);
@@ -404,8 +401,7 @@ void RouletteCameraCapture::setupCamera()
         m_stopRecordButton->setEnabled(false);
         m_saveBufferButton->setEnabled(false);
         m_seekStartButton->setEnabled(false);
-        m_playBufferButton->setEnabled(false);
-        m_pauseBufferButton->setEnabled(false);
+        m_playPauseBufferButton->setEnabled(false);
         m_stepBackwardButton->setEnabled(false);
         m_stepForwardButton->setEnabled(false);
         m_playbackSpeedSelector->setEnabled(false);
@@ -675,13 +671,33 @@ void RouletteCameraCapture::onSeekBufferStart()
     updateStatusMessage();
 }
 
-void RouletteCameraCapture::onPlayBuffer()
+void RouletteCameraCapture::onPlayPauseBuffer()
 {
     if (m_isBuffering)
     {
         return;
     }
 
+    // 再生中なら一時停止
+    if (m_isPlaybackActive && !m_isPlaybackPaused)
+    {
+        m_playbackTimer.stop();
+        m_isPlaybackPaused = true;
+        updateStatusMessage();
+        return;
+    }
+
+    // 一時停止中なら再開
+    if (m_isPlaybackActive && m_isPlaybackPaused)
+    {
+        m_isPlaybackPaused = false;
+        m_playbackTimer.setInterval(playbackIntervalMs());
+        m_playbackTimer.start();
+        updateStatusMessage();
+        return;
+    }
+
+    // 停止状態なら再生開始
     int frameCount = 0;
     {
         QMutexLocker locker(&m_frameMutex);
@@ -703,18 +719,6 @@ void RouletteCameraCapture::onPlayBuffer()
     m_playbackTimer.setInterval(playbackIntervalMs());
     m_playbackTimer.start();
     showBufferedFrameAt(m_playbackIndex);
-    updateStatusMessage();
-}
-
-void RouletteCameraCapture::onPauseBuffer()
-{
-    if (!m_isPlaybackActive)
-    {
-        return;
-    }
-
-    m_playbackTimer.stop();
-    m_isPlaybackPaused = true;
     updateStatusMessage();
 }
 
@@ -979,8 +983,18 @@ void RouletteCameraCapture::updateStatusMessage()
     m_stopRecordButton->setEnabled(m_isBuffering);
     m_saveBufferButton->setEnabled(canPlayback);
     m_seekStartButton->setEnabled(canPlayback);
-    m_playBufferButton->setEnabled(canPlayback);
-    m_pauseBufferButton->setEnabled(m_isPlaybackActive);
+
+    // Play/Pause ボタンの状態と表示を更新
+    m_playPauseBufferButton->setEnabled(canPlayback);
+    if (m_isPlaybackActive && !m_isPlaybackPaused)
+    {
+        m_playPauseBufferButton->setText("Pause");
+    }
+    else
+    {
+        m_playPauseBufferButton->setText("Play");
+    }
+
     m_stepBackwardButton->setEnabled(canPlayback);
     m_stepForwardButton->setEnabled(canPlayback);
     m_playbackSpeedSelector->setEnabled(canPlayback);

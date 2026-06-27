@@ -54,8 +54,7 @@ private:
     void onStopRecording();
     void onSaveBuffer();
     void onSeekBufferStart();
-    void onPlayBuffer();
-    void onPauseBuffer();
+    void onPlayPauseBuffer();
     void onStepBackward();
     void onStepForward();
     void onPlaybackTick();
@@ -93,8 +92,7 @@ private:
     QPushButton *m_stopRecordButton = nullptr;
     QPushButton *m_saveBufferButton = nullptr;
     QPushButton *m_seekStartButton = nullptr;
-    QPushButton *m_playBufferButton = nullptr;
-    QPushButton *m_pauseBufferButton = nullptr;
+    QPushButton *m_playPauseBufferButton = nullptr;
     QPushButton *m_stepBackwardButton = nullptr;
     QPushButton *m_stepForwardButton = nullptr;
     QComboBox *m_playbackSpeedSelector = nullptr;
