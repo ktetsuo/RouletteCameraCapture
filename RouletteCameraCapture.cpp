@@ -99,6 +99,10 @@ RouletteCameraCapture::RouletteCameraCapture(QWidget *parent)
     m_previewLabel->setText("Initializing camera...");
     layout->addWidget(m_previewLabel, 1);
 
+    m_playbackTimestampLabel = new QLabel("Timestamp: -", central);
+    m_playbackTimestampLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    layout->addWidget(m_playbackTimestampLabel);
+
     setCentralWidget(central);
 
     m_serialPort = new QSerialPort(this);
@@ -405,6 +409,10 @@ void RouletteCameraCapture::setupCamera()
     if (m_cameraDevices.isEmpty())
     {
         m_previewLabel->setText("No USB camera found.");
+        if (m_playbackTimestampLabel != nullptr)
+        {
+            m_playbackTimestampLabel->setText("Timestamp: -");
+        }
         m_startRecordButton->setEnabled(false);
         m_stopRecordButton->setEnabled(false);
         m_saveBufferButton->setEnabled(false);
@@ -615,6 +623,23 @@ void RouletteCameraCapture::onStopRecording()
 
         m_recordingStartTimestampMs = -1;
         m_triggerTimestampMs = -1;
+
+        // タイムスタンプのジッタを抑えるため、開始〜終了を線形補正
+        const int frameCount = m_frameBuffer.size();
+        if (frameCount >= 2)
+        {
+            const qint64 startTs = m_frameBuffer.front().timestampMs;
+            const qint64 endTs = m_frameBuffer.back().timestampMs;
+            const double step = static_cast<double>(endTs - startTs) / static_cast<double>(frameCount - 1);
+
+            for (int i = 0; i < frameCount; ++i)
+            {
+                m_frameBuffer[i].timestampMs = startTs + static_cast<qint64>(step * static_cast<double>(i) + 0.5);
+            }
+
+            // 終端は必ず元の終了時刻に合わせる
+            m_frameBuffer.back().timestampMs = endTs;
+        }
 
         bufferedFrameCount = m_frameBuffer.size();
         if (!m_frameBuffer.isEmpty())
@@ -873,13 +898,17 @@ void RouletteCameraCapture::onPlaybackSliderChanged(int value)
 void RouletteCameraCapture::showBufferedFrameAt(int index)
 {
     QImage frame;
+    qint64 relativeTimestampMs = 0;
     {
         QMutexLocker locker(&m_frameMutex);
         if (index < 0 || index >= m_frameBuffer.size())
         {
             return;
         }
-        frame = m_frameBuffer.at(index).image;
+
+        const BufferedFrame &selectedFrame = m_frameBuffer.at(index);
+        frame = selectedFrame.image;
+        relativeTimestampMs = selectedFrame.timestampMs - m_frameBuffer.front().timestampMs;
     }
 
     if (frame.isNull())
@@ -897,6 +926,12 @@ void RouletteCameraCapture::showBufferedFrameAt(int index)
         m_previewLabel->size(),
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation));
+
+    if (m_playbackTimestampLabel != nullptr)
+    {
+        m_playbackTimestampLabel->setText(QString("Timestamp: +%1 ms")
+            .arg(relativeTimestampMs));
+    }
 }
 
 int RouletteCameraCapture::playbackIntervalMs() const
@@ -1006,6 +1041,11 @@ void RouletteCameraCapture::updatePreview()
         m_previewLabel->size(),
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation));
+
+    if (m_playbackTimestampLabel != nullptr)
+    {
+        m_playbackTimestampLabel->setText("Timestamp: LIVE");
+    }
 }
 
 void RouletteCameraCapture::updateStatusMessage()

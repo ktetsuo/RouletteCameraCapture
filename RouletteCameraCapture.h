@@ -100,6 +100,7 @@ private:
     QComboBox *m_playbackSpeedSelector = nullptr;
     QSlider *m_playbackPositionSlider = nullptr;
     QLabel *m_previewLabel = nullptr;
+    QLabel *m_playbackTimestampLabel = nullptr;
     QList<QCameraDevice> m_cameraDevices;
     QCamera *m_camera = nullptr;
     QMediaCaptureSession m_captureSession;
