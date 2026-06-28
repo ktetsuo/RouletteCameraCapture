@@ -215,7 +215,7 @@ void RouletteCameraCapture::onToggleSerialPort()
         m_serialPort->close();
         m_serialRxPending.clear();
         m_serialReceivedLines.clear();
-        m_lastControlState = -1;
+        m_lastControlState = ControlState::IDLE;
         m_toggleSerialPortButton->setText("Open");
         m_serialPortSelector->setEnabled(true);
         m_baudRateSelector->setEnabled(true);
@@ -252,7 +252,7 @@ void RouletteCameraCapture::onToggleSerialPort()
 
     m_serialRxPending.clear();
     m_serialReceivedLines.clear();
-    m_lastControlState = -1;
+    m_lastControlState = ControlState::IDLE;
 
     m_toggleSerialPortButton->setText("Close");
     m_serialPortSelector->setEnabled(false);
@@ -298,47 +298,47 @@ void RouletteCameraCapture::onSerialReadyRead()
             }
 
             qDebug().noquote() << line;
+			// 行の先頭が@で始まる場合のみ解析する
+			if (!line.startsWith('@'))
+			{
+				newLineIndex = m_serialRxPending.indexOf('\n');
+				continue;
+			}
+			// @を除去してカンマ区切りで分割する
+            const QStringList parts = line.mid(1).split(',');
+			// 10個の要素が揃っていない場合は無視する
+			if (parts.size() < 10)
+			{
+				newLineIndex = m_serialRxPending.indexOf('\n');
+				continue;
+			}
+			const unsigned long loadTimeUs = parts.value(0).trimmed().toULong();
+			const ControlState controlState = static_cast<ControlState>(parts.value(1).trimmed().toInt());
+			const float targetCurrentA = parts.value(2).trimmed().toFloat();
+			const float currentA = parts.value(3).trimmed().toFloat();
+			const float speedRpm = parts.value(4).trimmed().toFloat();
+			const float posRev = parts.value(5).trimmed().toFloat();
+			const float targettingPosRev = parts.value(6).trimmed().toFloat();
+			const float remainingPosRev = parts.value(7).trimmed().toFloat();
+			const float remainingSec = parts.value(8).trimmed().toFloat();
+			const float vinV = parts.value(9).trimmed().toFloat();
 
-            const QStringList parts = line.split(',');
-            int numericCount = 0;
-            int secondNumericValue = 0;
-            for (const QString &part : parts)
+            const bool isNowTargeting = (controlState == ControlState::TARGETING1 || controlState == ControlState::TARGETING2);
+			const bool wasTargeting = (m_lastControlState == ControlState::TARGETING1 || m_lastControlState == ControlState::TARGETING2);
+            const bool isNowIdle = (controlState == ControlState::IDLE);
+            const bool wasIdle = (m_lastControlState == ControlState::IDLE);
+            // TARGETING 状態への遷移で録画開始
+            if (isNowTargeting && !wasTargeting)
             {
-                bool ok = false;
-                const int value = part.trimmed().toInt(&ok);
-                if (!ok)
-                {
-                    continue;
-                }
-
-                ++numericCount;
-                if (numericCount == 2)
-                {
-                    secondNumericValue = value;
-                    break;
-                }
+                emit serialTriggerChanged(true);
+            }
+            // IDLE 以外から IDLE への遷移で録画停止
+            else if (isNowIdle && !wasIdle)
+            {
+                emit serialTriggerChanged(false);
             }
 
-            if (numericCount >= 2)
-            {
-                const bool isNowTargeting = (secondNumericValue == static_cast<int>(ControlState::TARGETING));
-				const bool wasTargeting = (m_lastControlState == static_cast<int>(ControlState::TARGETING));
-                const bool isNowIdle = (secondNumericValue == static_cast<int>(ControlState::IDLE));
-                const bool wasIdle = (m_lastControlState == static_cast<int>(ControlState::IDLE));
-
-                // TARGETING 状態への遷移で録画開始
-                if (isNowTargeting && !wasTargeting)
-                {
-                    emit serialTriggerChanged(true);
-                }
-                // IDLE 以外から IDLE への遷移で録画停止
-                else if (isNowIdle && !wasIdle)
-                {
-                    emit serialTriggerChanged(false);
-                }
-
-                m_lastControlState = secondNumericValue;
-            }
+            m_lastControlState = controlState;
 
             newLineIndex = m_serialRxPending.indexOf('\n');
         }
@@ -1110,16 +1110,16 @@ void RouletteCameraCapture::updateStatusMessage()
 
     statusBar()->showMessage(shortMessage);
 
-    qDebug().noquote() << QString("StatusDetail | Camera=%1 | SelectedMax=%2 | Measured=%3 | Buffering=%4 | PlaybackActive=%5 | PlaybackPaused=%6 | Frames=%7 | DurationMs=%8 | Index=%9 | Speed=%10")
-        .arg(m_currentCameraName)
-        .arg(m_selectedMaxFrameRate, 0, 'f', 1)
-        .arg(m_measuredCaptureFps, 0, 'f', 1)
-        .arg(m_isBuffering ? QString("ON") : QString("OFF"))
-        .arg(m_isPlaybackActive ? QString("ON") : QString("OFF"))
-        .arg(m_isPlaybackPaused ? QString("ON") : QString("OFF"))
-        .arg(bufferedFrameCount)
-        .arg(bufferedDurationMs)
-        .arg(m_playbackIndex)
-        .arg(speedText);
+    //qDebug().noquote() << QString("StatusDetail | Camera=%1 | SelectedMax=%2 | Measured=%3 | Buffering=%4 | PlaybackActive=%5 | PlaybackPaused=%6 | Frames=%7 | DurationMs=%8 | Index=%9 | Speed=%10")
+    //    .arg(m_currentCameraName)
+    //    .arg(m_selectedMaxFrameRate, 0, 'f', 1)
+    //    .arg(m_measuredCaptureFps, 0, 'f', 1)
+    //    .arg(m_isBuffering ? QString("ON") : QString("OFF"))
+    //    .arg(m_isPlaybackActive ? QString("ON") : QString("OFF"))
+    //    .arg(m_isPlaybackPaused ? QString("ON") : QString("OFF"))
+    //    .arg(bufferedFrameCount)
+    //    .arg(bufferedDurationMs)
+    //    .arg(m_playbackIndex)
+    //    .arg(speedText);
 }
 

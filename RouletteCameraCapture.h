@@ -21,15 +21,15 @@
 #include <QtCore/QString>
 #include "ui_RouletteCameraCapture.h"
 
-/// @brief ルーレット制御装置の制御状態
+/// @brief 制御状態を表す列挙型
 enum class ControlState
 {
-    IDLE,             // 待機状態 (0)
-    ACCELERATING,     // 加速中 (1)
-    WAITING_TRIGGER1, // トリガーセンサー1待ち (2)
-    WAITING_TRIGGER2, // トリガーセンサー2待ち (3)
-    TARGETING,        // 目標位置に向けて制御中 (4) ← 撮影対象
-    DECELERATING,     // 減速中 (5)
+    IDLE,             // 待機状態
+    ACCELERATING,     // 加速中
+    WAITING_TRIGGER1, // トリガーセンサー1待ち
+    TARGETING1,       // 目標位置に向けて制御中（トリガーセンサー2待ち）
+    TARGETING2,       // 目標位置に向けて制御中（トリガーセンサー2反応後）
+    DECELERATING,     // 減速中
 };
 
 class RouletteCameraCapture : public QMainWindow
@@ -109,7 +109,7 @@ private:
     QString m_serialRxPending;
     QQueue<QString> m_serialReceivedLines;
     int m_maxSerialReceivedLines = 512;
-    int m_lastControlState = -1;
+    ControlState m_lastControlState = ControlState::IDLE;
     QImage m_latestFrame;
     QRecursiveMutex m_frameMutex;
     QTimer m_previewTimer;
