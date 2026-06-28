@@ -486,7 +486,10 @@ void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
     m_selectedMaxFrameRate = bestFrameRate;
     {
         QMutexLocker locker(&m_frameMutex);
+        m_liveFrameBuffer.clear();
         m_frameBuffer.clear();
+        m_recordingStartTimestampMs = -1;
+        m_triggerTimestampMs = -1;
     }
     {
         QSignalBlocker blocker(m_playbackPositionSlider);
@@ -496,6 +499,7 @@ void RouletteCameraCapture::startCamera(const QCameraDevice &cameraDevice)
     m_captureFrameCount = 0;
     m_measuredCaptureFps = 0.0;
     m_captureFpsTimer.restart();
+    m_bufferTimer.restart();
     updateStatusMessage();
 }
 
@@ -557,6 +561,11 @@ void RouletteCameraCapture::onStartRecording()
         return;
     }
 
+    if (!m_bufferTimer.isValid())
+    {
+        m_bufferTimer.start();
+    }
+
     m_playbackTimer.stop();
     m_isPlaybackActive = false;
     m_isPlaybackPaused = false;
@@ -564,7 +573,19 @@ void RouletteCameraCapture::onStartRecording()
 
     {
         QMutexLocker locker(&m_frameMutex);
+        const qint64 nowMs = m_bufferTimer.elapsed();
+        m_triggerTimestampMs = nowMs;
+        m_recordingStartTimestampMs = qMax<qint64>(0, nowMs - m_preTriggerDurationMs);
+
+        // トリガー時点でプリトリガ区間を確定して保持
         m_frameBuffer.clear();
+        for (const BufferedFrame &bufferedFrame : m_liveFrameBuffer)
+        {
+            if (bufferedFrame.timestampMs >= m_recordingStartTimestampMs && bufferedFrame.timestampMs <= m_triggerTimestampMs)
+            {
+                m_frameBuffer.enqueue(bufferedFrame);
+            }
+        }
     }
     {
         QSignalBlocker blocker(m_playbackPositionSlider);
@@ -574,11 +595,11 @@ void RouletteCameraCapture::onStartRecording()
 
     m_isBuffering = true;
     m_isBufferFull = false;
-    m_bufferTimer.restart();
 
-    qDebug().noquote() << QString("BufferStart | Camera=%1 | DurationMs=%2")
+    qDebug().noquote() << QString("BufferStart | Camera=%1 | DurationMs=%2 | PreTriggerMs=%3")
         .arg(m_currentCameraName)
-        .arg(m_bufferDurationMs);
+        .arg(m_bufferDurationMs)
+        .arg(m_preTriggerDurationMs);
 
     updateStatusMessage();
 }
@@ -591,6 +612,10 @@ void RouletteCameraCapture::onStopRecording()
     qint64 bufferedDurationMs = 0;
     {
         QMutexLocker locker(&m_frameMutex);
+
+        m_recordingStartTimestampMs = -1;
+        m_triggerTimestampMs = -1;
+
         bufferedFrameCount = m_frameBuffer.size();
         if (!m_frameBuffer.isEmpty())
         {
@@ -920,19 +945,24 @@ void RouletteCameraCapture::onVideoFrameChanged(const QVideoFrame &frame)
         m_latestFrame = image;
         ++m_captureFrameCount;
 
-        if (m_isBuffering)
-        {
-            const qint64 nowMs = m_bufferTimer.elapsed();
-            m_frameBuffer.enqueue({ nowMs, image });
+        const qint64 nowMs = m_bufferTimer.isValid() ? m_bufferTimer.elapsed() : 0;
 
-            // バッファから 1秒より古いフレームを削除
-            while (!m_frameBuffer.isEmpty() && (nowMs - m_frameBuffer.head().timestampMs) > m_bufferDurationMs)
+        m_liveFrameBuffer.enqueue({ nowMs, image });
+
+        const qint64 liveKeepDurationMs = (m_bufferDurationMs * 2) + m_preTriggerDurationMs;
+        while (!m_liveFrameBuffer.isEmpty() && (nowMs - m_liveFrameBuffer.head().timestampMs) > liveKeepDurationMs)
+        {
+            m_liveFrameBuffer.dequeue();
+        }
+
+        if (m_isBuffering && m_triggerTimestampMs >= 0)
+        {
+            if (nowMs > m_triggerTimestampMs)
             {
-                m_frameBuffer.dequeue();
+                m_frameBuffer.enqueue({ nowMs, image });
             }
 
-            // 開始から1秒経ったら停止
-            if (nowMs >= m_bufferDurationMs)
+            if (nowMs >= (m_triggerTimestampMs + m_bufferDurationMs))
             {
                 onStopRecording();
             }

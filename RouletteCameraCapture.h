@@ -123,7 +123,11 @@ private:
     bool m_isPlaybackActive = false;
     bool m_isPlaybackPaused = false;
     int m_playbackIndex = 0;
-    int m_bufferDurationMs = 1000;
+    int m_bufferDurationMs = 750;
+    int m_preTriggerDurationMs = 250;
+    qint64 m_recordingStartTimestampMs = -1;
+    qint64 m_triggerTimestampMs = -1;
+    QQueue<BufferedFrame> m_liveFrameBuffer;
     QQueue<BufferedFrame> m_frameBuffer;
     QTimer m_playbackTimer;
 };
